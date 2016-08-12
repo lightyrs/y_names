@@ -1,0 +1,67 @@
+#!/usr/bin/env ruby
+
+require 'rubygems'
+require 'commander/import'
+require 'boilerpipe_article'
+require 'net/http'
+
+Tokenizer = /([aeiouy]{1,3})/
+
+def count_syllables(word)
+
+  len = 0
+
+  ending_matched = word[/(ing|io)$/]
+  if ending_matched then
+    len += 1
+    word = word[0..-(ending_matched.length)]
+  end
+
+  got = word.scan(Tokenizer)
+  len += got.size()
+
+  if got.size() > 1 and got[-1] == ['e'] and
+      word[-1].chr() == 'e' and
+      word[-2].chr() != 'l' then
+    len -= 1
+  end
+
+  return len
+end
+
+program :name, 'y_names'
+program :version, '0.0.1'
+program :description, 'Generates brand names in the style of Shyp, Tylt, Lyft, etc.'
+
+command :gen do |c|
+  c.syntax = 'y_names gen [options]'
+  c.summary = 'Generates y-names given a string, file, or url'
+  c.description = 'You may specify the count of results to return as well as the maximum character count and number of syllables for individual names.'
+  c.example 'string', 'gen "This is a string with some words that contain the letter i"'
+  c.example 'file', 'gen ./i_words.txt'
+  c.example 'url', 'gen http://example.com/i_words'
+  c.option '--count NUMBER', Integer, 'Number of results to return'
+  c.option '--chars NUMBER', Integer, 'Maximum character count of individual names'
+  c.option '--syllables NUMBER', Integer, 'Maximum number of syllables in individual names'
+  c.action do |args, options|
+    # Do something or c.when_called Y_names::Commands::Gen
+    options.default :count => 25, :chars => 12, :syllables => 2
+
+    uri = URI(args[0])
+    html = Net::HTTP.get(uri)
+
+    parser = BoilerpipeArticle.new(html)
+    plaintext = parser.getText
+
+    results = plaintext.split(" ").select do |word|
+      word.length <= options.chars && !word.match("y") && word.match("i") && word[0].match(/[a-zA-Z]/) && count_syllables(word) <= options.syllables
+    end
+
+    results = results.uniq.first(options.count).map do |word|
+      word.gsub("i", "y").gsub(/\,|\./, "").gsub(/(.*)[^a-zA-Z]\z/i, '\1').downcase
+    end
+
+    puts "\n"
+    puts results.uniq
+  end
+end
